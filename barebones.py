@@ -3,12 +3,12 @@ import pandas as pd
 import time
 import datetime
 import requests
+from zoneinfo import ZoneInfo
 
-# --- CONFIG ---
 symbol = "ETH/USDT"
 timeframe = "5m"
 rsi_period = 14
-paper_balance = {"USDT": 1000.0, "ETH": 0.0}  # start with $1000
+paper_balance = {"USDT": 1000.0, "ETH": 0.25} 
 
 # Initialize Kraken Client through ccxt, add API key if actually trading later
 exchange = ccxt.kraken({
@@ -38,33 +38,32 @@ def compute_rsi(prices, period=14):
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
-# --- Paper Trade Execution ---
 def paper_buy(price, amount):
     global paper_balance
     cost = price * amount
     if paper_balance["USDT"] >= cost:
         paper_balance["USDT"] -= cost
-        paper_balance["BTC"] += amount
-        msg = f"BUY {amount:.4f} BTC @ {price:.2f} | Balance: {paper_balance}"
+        paper_balance["ETH"] += amount
+        msg = f"BUY {amount:.4f} ETH @ {price:.2f} | Balance: {paper_balance}"
         print(msg)
         # send_telegram(msg)
 
 def paper_sell(price, amount):
     global paper_balance
-    if paper_balance["BTC"] >= amount:
-        paper_balance["BTC"] -= amount
+    if paper_balance["ETH"] >= amount:
+        paper_balance["ETH"] -= amount
         paper_balance["USDT"] += price * amount
-        msg = f"SELL {amount:.4f} BTC @ {price:.2f} | Balance: {paper_balance}"
+        msg = f"SELL {amount:.4f} ETH @ {price:.2f} | Balance: {paper_balance}"
         print(msg)
         # send_telegram(msg)
 
-# --- Main Loop ---
+# execution loop
 while True:
     df = fetch_ohlcv()
     df["rsi"] = compute_rsi(df["close"], rsi_period)
     latest_rsi = df["rsi"].iloc[-1]
     latest_price = df["close"].iloc[-1]
-    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")
 
     print(f"[{now}] Price={latest_price}, RSI={latest_rsi:.2f}")
 
