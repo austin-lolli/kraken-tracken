@@ -1,29 +1,39 @@
+import asyncio
 import ccxt
-import pandas as pd
-import time
 import datetime
+import os
+import pandas as pd
 import requests
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 from zoneinfo import ZoneInfo
 
 symbol = "ETH/USDT"
+# if we are polling every minute, should we have the timeframe match? 
 timeframe = "5m"
 rsi_period = 14
 paper_balance = {"USDT": 1000.0, "ETH": 0.25} 
-# not really doing anyting with this yet, but plan is to use this with pandas eventually
+# may do more detailed logging for analysis with pandas later, for now this just tracks buys/sells
 transaction_log = []
+current_rsi = 0.0
+current_eth_price = 0.0
 
 # Initialize Kraken Client through ccxt, add API key if actually trading later
 exchange = ccxt.kraken({
     "enableRateLimit": True
 })
 
-# TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-# CHAT_ID = "YOUR_CHAT_ID"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")  # optional; will be set on /start
+BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# def send_telegram(message: str):
-#     if TELEGRAM_TOKEN and CHAT_ID:
-#         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-#         requests.post(url, data={"chat_id": CHAT_ID, "text": message})
+
+def send_telegram(message: str):
+    url = f"{BASE_URL}/sendMessage"
+    try:
+        requests.post(url, data={"chat_id": CHAT_ID, "text": message})
+    except Exception as e:
+        print(f"Telegram send error: {e}")
 
 def fetch_ohlcv():
     ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=100)
@@ -44,17 +54,21 @@ def account_dollar_value(eth_price):
     eth_value = paper_balance["ETH"] * eth_price
     return round((paper_balance["USDT"] + eth_value), 2)
 
+def current_potential_eth(eth_price):
+    dollars_as_eth = paper_balance["USDT"] / eth_price
+    return round(paper_balance["ETH"] + dollars_as_eth, 5)
+
 def log_transaction(price, amount, transaction_type):
     msg = f"INVALID transaction data received. Args: {price}, {amount}, {transaction_type}"
     now = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")
     if transaction_type == "BUY": 
-        transaction_log.append({"eth_price": price, "amount_purchased": amount, "account_dollar_value": account_dollar_value(price)})
+        # transaction_log.append({"eth_price": price, "amount_purchased": amount, "account_dollar_value": account_dollar_value(price)})
         msg = f"[{now}]:BUY {amount:.5f} ETH @ {price:.2f} | Balances: USDT:{paper_balance['USDT']:.2f} ETH:{paper_balance['ETH']:.5f} Total:{account_dollar_value(price)}"
     elif transaction_type == "SELL":
-        transaction_log.append({"eth_price": price, "amount_sold": amount, "account_dollar_value": account_dollar_value(price)})
+        # transaction_log.append({"eth_price": price, "amount_sold": amount, "account_dollar_value": account_dollar_value(price)})
         msg = f"[{now}]SELL {amount:.5f} ETH @ {price:.2f} | Balances: USDT:{paper_balance['USDT']:.2f} ETH:{paper_balance['ETH']:.5f} Total:{account_dollar_value(price)}"
+    transaction_log.append(msg)
     print(msg)
-
 
 def paper_buy(price, amount):
     global paper_balance
@@ -73,24 +87,96 @@ def paper_sell(price, amount):
         log_transaction(price, amount, "SELL")
         # send_telegram(msg)
 
-# print the ETH price on startup for a baseline
-print(f"Initial Balances: USDT:{paper_balance['USDT']:.2f} ETH:{paper_balance['ETH']:.5f} Total:{account_dollar_value(fetch_ohlcv()['close'].iloc[-1])}")
-# execution loop
-while True:
+# --- Telegram Handlers ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global CHAT_ID
+    CHAT_ID = update.effective_chat.id
+    await update.message.reply_text("Bot is running! Use /rsi to check RSI, /balance for balances.")
+
+async def rsi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     df = fetch_ohlcv()
     df["rsi"] = compute_rsi(df["close"], rsi_period)
     latest_rsi = df["rsi"].iloc[-1]
-    latest_price = df["close"].iloc[-1]
-    now = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")
+    await update.message.reply_text(f"Current RSI: {latest_rsi:.2f}")
 
-    print(f"[{now}] Price={latest_price}, RSI={latest_rsi:.2f}")
+async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = f"Balances:\nUSDT: {paper_balance['USDT']:.2f}\nETH: {paper_balance['ETH']:.5f}"
+    await update.message.reply_text(msg)
 
-    # Strategy: Buy if RSI < 35, Sell if RSI > 65
-    trade_size = 0.01  
-    if latest_rsi < 35:
-        paper_buy(latest_price, trade_size)
-    elif latest_rsi > 65:
-        paper_sell(latest_price, trade_size)
+async def recent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = "Recent trades:\n" + "\n".join(transaction_log[-5:])
+    await update.message.reply_text(msg)
 
-    time.sleep(60) 
+# TODO: 
+# See errorlog.txt, need error handling for API requests, initiate a wait and retry 
+async def trading_loop(app: Application, stop_event: asyncio.Event):
+    first_loop = True
+    try: 
+        while not stop_event.is_set():
+            df = fetch_ohlcv()
+            df["rsi"] = compute_rsi(df["close"], rsi_period)
+            current_rsi = df["rsi"].iloc[-1]
+            current_eth_price = df["close"].iloc[-1]
+            now = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")
 
+            if first_loop:
+                print(f"[{now}]: Startup Balances:")
+                print(f"Initial USDT: {paper_balance['USDT']:.2f}")
+                print(f"Initial ETH: {paper_balance['ETH']:.5f}")
+                print(f"Total Dollar Value: {account_dollar_value(current_eth_price)}")
+                print(f"Total ETH Potential: {current_potential_eth(current_eth_price)}")
+                first_loop = False
+            else: 
+                print(f"[{now}] Price={current_eth_price}, RSI={current_rsi:.2f}")
+
+            # testing with a more conservative RSI limit
+            # I think looking for the peaks/valleys of RSI could lead to more trading efficiency
+            # feels like a loose RSI leads to purchases/sales seeming random
+            trade_size = 0.01  
+            if current_rsi < 25:
+                paper_buy(current_eth_price, trade_size)
+            elif current_rsi > 75:
+                paper_sell(current_eth_price, trade_size)
+
+            for _ in range(60):
+                if stop_event.is_set():
+                    break
+                await asyncio.sleep(1)
+
+    except asyncio.CancelledError:
+        print("Trading loop cancelled")
+
+
+async def main():
+    stop_event = asyncio.Event()
+
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("rsi", rsi))
+    app.add_handler(CommandHandler("balance", balance))
+    app.add_handler(CommandHandler("recent", recent))
+
+    trade_loop_task = asyncio.create_task(trading_loop(app, stop_event))
+
+    await app.initialize()
+    await app.start()
+    try:
+        await app.updater.start_polling()
+        await asyncio.Event().wait()
+    except KeyboardInterrupt:
+        print("Ctrl+C pressed — stopping bot")
+    finally:
+        stop_event.set()
+        trade_loop_task.cancel()
+        try:
+            await trade_loop_task
+        except asyncio.CancelledError:
+            pass
+
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
+        print("Bot shut down cleanly")
+
+if __name__ == "__main__":
+    asyncio.run(main())
