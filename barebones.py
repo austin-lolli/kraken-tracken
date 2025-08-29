@@ -9,11 +9,9 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from zoneinfo import ZoneInfo
 
 symbol = "ETH/USDT"
-# if we are polling every minute, should we have the timeframe match? 
 timeframe = "5m"
 rsi_period = 14
 paper_balance = {"USDT": 1000.0, "ETH": 0.25} 
-# may do more detailed logging for analysis with pandas later, for now this just tracks buys/sells
 transaction_log = []
 current_rsi = 0.0
 current_eth_price = 0.0
@@ -41,7 +39,7 @@ def fetch_ohlcv():
     df["close"] = df["close"].astype(float)
     return df
 
-def compute_rsi(prices, period=14):
+def compute_rsi(prices, period=rsi_period):
     delta = prices.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
@@ -62,10 +60,8 @@ def log_transaction(price, amount, transaction_type):
     msg = f"INVALID transaction data received. Args: {price}, {amount}, {transaction_type}"
     now = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")
     if transaction_type == "BUY": 
-        # transaction_log.append({"eth_price": price, "amount_purchased": amount, "account_dollar_value": account_dollar_value(price)})
         msg = f"[{now}]:BUY {amount:.5f} ETH @ {price:.2f} | Balances: USDT:{paper_balance['USDT']:.2f} ETH:{paper_balance['ETH']:.5f} Total:{account_dollar_value(price)}"
     elif transaction_type == "SELL":
-        # transaction_log.append({"eth_price": price, "amount_sold": amount, "account_dollar_value": account_dollar_value(price)})
         msg = f"[{now}]SELL {amount:.5f} ETH @ {price:.2f} | Balances: USDT:{paper_balance['USDT']:.2f} ETH:{paper_balance['ETH']:.5f} Total:{account_dollar_value(price)}"
     transaction_log.append(msg)
     print(msg)
@@ -77,7 +73,6 @@ def paper_buy(price, amount):
         paper_balance["USDT"] -= cost
         paper_balance["ETH"] += amount
         log_transaction(price, amount, "BUY")
-        # send_telegram(msg)
 
 def paper_sell(price, amount):
     global paper_balance
@@ -85,7 +80,6 @@ def paper_sell(price, amount):
         paper_balance["ETH"] -= amount
         paper_balance["USDT"] += price * amount
         log_transaction(price, amount, "SELL")
-        # send_telegram(msg)
 
 # --- Telegram Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -98,7 +92,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - initialize the service\n"
         "/help - displays this message\n"
         "/balances - displays USDT and ETH balances\n"
-        "/recent - shows the last five transactions, if any\n"
+        "/recent <number> - shows the last <number> transactions, if any. Default <number> is 5.\n"
         "/rsi - returns the current RSI for ETH\n"
     )
     await update.message.reply_text(msg)
@@ -108,12 +102,21 @@ async def balances(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 async def recent(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = "Recent trades:\n" + "\n".join(transaction_log[-5:])
+    num_trades = 5
+
+    if context.args:
+        try:
+            num_trades = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("Please provide a valid number.")
+            return
+
+    msg = "Recent trades:\n" + "\n".join(transaction_log[-num_trades:]) +f"\nLast {num_trades} shown of {len(transaction_log)} transactions."
     await update.message.reply_text(msg)
 
 async def rsi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     df = fetch_ohlcv()
-    df["rsi"] = compute_rsi(df["close"], rsi_period)
+    df["rsi"] = compute_rsi(df["close"])
     latest_rsi = df["rsi"].iloc[-1]
     await update.message.reply_text(f"Current RSI: {latest_rsi:.2f}")
 
@@ -130,7 +133,7 @@ async def trading_loop(app: Application, stop_event: asyncio.Event):
     try: 
         while not stop_event.is_set():
             df = fetch_ohlcv()
-            df["rsi"] = compute_rsi(df["close"], rsi_period)
+            df["rsi"] = compute_rsi(df["close"])
             current_rsi = df["rsi"].iloc[-1]
             current_eth_price = df["close"].iloc[-1]
             now = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
