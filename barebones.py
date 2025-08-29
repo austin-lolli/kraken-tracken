@@ -93,13 +93,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     CHAT_ID = update.effective_chat.id
     await update.message.reply_text("Bot is running! Use /rsi to check RSI, /balance for balances.")
 
-async def rsi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    df = fetch_ohlcv()
-    df["rsi"] = compute_rsi(df["close"], rsi_period)
-    latest_rsi = df["rsi"].iloc[-1]
-    await update.message.reply_text(f"Current RSI: {latest_rsi:.2f}")
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = (
+        "/start - initialize the service\n"
+        "/help - displays this message\n"
+        "/balances - displays USDT and ETH balances\n"
+        "/recent - shows the last five transactions, if any\n"
+        "/rsi - returns the current RSI for ETH\n"
+    )
+    await update.message.reply_text(msg)
 
-async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def balances(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = f"Balances:\nUSDT: {paper_balance['USDT']:.2f}\nETH: {paper_balance['ETH']:.5f}"
     await update.message.reply_text(msg)
 
@@ -107,36 +111,55 @@ async def recent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = "Recent trades:\n" + "\n".join(transaction_log[-5:])
     await update.message.reply_text(msg)
 
+async def rsi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    df = fetch_ohlcv()
+    df["rsi"] = compute_rsi(df["close"], rsi_period)
+    latest_rsi = df["rsi"].iloc[-1]
+    await update.message.reply_text(f"Current RSI: {latest_rsi:.2f}")
+
 # TODO: 
 # See errorlog.txt, need error handling for API requests, initiate a wait and retry 
 async def trading_loop(app: Application, stop_event: asyncio.Event):
     first_loop = True
+    lookback_frames = 5
+    # Don't allow a trade until we have enough frames to do trend analysis
+    last_trade_time = datetime.datetime.now(ZoneInfo("America/Los_Angeles")) - datetime.timedelta(minutes=lookback_frames)
+    cooldown_minutes = 15
+    trade_size = 0.01
+
     try: 
         while not stop_event.is_set():
             df = fetch_ohlcv()
             df["rsi"] = compute_rsi(df["close"], rsi_period)
             current_rsi = df["rsi"].iloc[-1]
             current_eth_price = df["close"].iloc[-1]
-            now = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")
+            now = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+            log_timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
 
             if first_loop:
-                print(f"[{now}]: Startup Balances:")
+                print(f"[{log_timestamp}]: Startup Balances:")
                 print(f"Initial USDT: {paper_balance['USDT']:.2f}")
                 print(f"Initial ETH: {paper_balance['ETH']:.5f}")
                 print(f"Total Dollar Value: {account_dollar_value(current_eth_price)}")
                 print(f"Total ETH Potential: {current_potential_eth(current_eth_price)}")
                 first_loop = False
             else: 
-                print(f"[{now}] Price={current_eth_price}, RSI={current_rsi:.2f}")
+                print(f"[{log_timestamp}] Price={current_eth_price}, RSI={current_rsi:.2f}")
 
-            # testing with a more conservative RSI limit
-            # I think looking for the peaks/valleys of RSI could lead to more trading efficiency
-            # feels like a loose RSI leads to purchases/sales seeming random
-            trade_size = 0.01  
-            if current_rsi < 25:
-                paper_buy(current_eth_price, trade_size)
-            elif current_rsi > 75:
-                paper_sell(current_eth_price, trade_size)
+            can_trade = (
+                last_trade_time is None or 
+                (now - last_trade_time).total_seconds() / 60 > cooldown_minutes
+            )
+
+            if can_trade:
+                recent_rsi = df["rsi"].iloc[-lookback_frames:]
+                uptrend = recent_rsi.is_monotonic_increasing
+                downtrend = recent_rsi.is_monotonic_decreasing
+
+                if downtrend and current_rsi < 30:
+                    paper_buy(current_eth_price, trade_size)
+                elif uptrend and current_rsi > 70:
+                    paper_sell(current_eth_price, trade_size)
 
             for _ in range(60):
                 if stop_event.is_set():
@@ -152,8 +175,9 @@ async def main():
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help))
     app.add_handler(CommandHandler("rsi", rsi))
-    app.add_handler(CommandHandler("balance", balance))
+    app.add_handler(CommandHandler("balances", balances))
     app.add_handler(CommandHandler("recent", recent))
 
     trade_loop_task = asyncio.create_task(trading_loop(app, stop_event))
