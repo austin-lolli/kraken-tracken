@@ -161,8 +161,10 @@ async def trading_loop(app: Application, stop_event: asyncio.Event):
 
                 if downtrend and current_rsi < 30:
                     paper_buy(current_eth_price, trade_size)
+                    last_trade_time = now
                 elif uptrend and current_rsi > 70:
                     paper_sell(current_eth_price, trade_size)
+                    last_trade_time = now
 
             for _ in range(60):
                 if stop_event.is_set():
