@@ -36,19 +36,22 @@ class AbstractStrategy(ABC):
     
     def perform_transaction(self, price: float, token_amount: float, action: Signal):
         now = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")
+        message = f"[{now}][{action}]: {token_amount} ETH at ${price}"
+        failure_message = f"[{now}][FAILURE]: Unable to {action} {token_amount} ETH at ${price}"
         transaction_value = price * token_amount
 
         if action == Signal.BUY:
             if self.balances["USDT"] < transaction_value:
-                token_amount = round(self.balances["USDT"] / price, 5)
-                transaction_value = price * token_amount
-            self.balances["USDT"] -= transaction_value
-            self.balances["ETH"] += token_amount
+                message = failure_message
+            else:
+                self.balances["USDT"] -= transaction_value
+                self.balances["ETH"] += token_amount
         elif action == Signal.SELL:
             if self.balances["ETH"] < token_amount:
-                token_amount = self.balances["ETH"]
-            self.balances["USDT"] += transaction_value
-            self.balances["ETH"] -= token_amount
+                message = failure_message
+            else:
+                self.balances["USDT"] += transaction_value
+                self.balances["ETH"] -= token_amount
 
-        self.transactions.append(f"[{now}][{action}]: {token_amount} ETH at ${price}")
-        print(f"[{now}][{action}]: {token_amount} ETH at ${price}")
+        self.transactions.append(message)
+        print(message)
