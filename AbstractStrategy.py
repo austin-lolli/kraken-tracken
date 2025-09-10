@@ -32,7 +32,8 @@ class AbstractStrategy(ABC):
         return self.balances
     
     def get_recent_transactions(self, count):
-        return self.transactions[:-count]
+        recent = self.transactions[:-count] if count < len(self.transactions) else self.transactions
+        return recent
     
     def perform_transaction(self, price: float, token_amount: float, action: Signal):
         now = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")

@@ -13,7 +13,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN")
 async def runner_rsi_simple():
     print("initializing exchange and strategy")
     exchange = ccxt.kraken({"enableRateLimit": True})
-    strategy = RSIStrategySimple(exchange)
+    strategy = RSIStrategySimple(exchange, rsiLower=50, rsiUpper=50)
 
     print("starting telegram bot")
     app = Application.builder().token(TELEGRAM_TOKEN).build()
