@@ -39,7 +39,8 @@ class AbstractStrategy(ABC):
         now = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")
         message = f"[{now}][{action}]: {token_amount} ETH at ${price}"
         failure_message = f"[{now}][FAILURE]: Unable to {action} {token_amount} ETH at ${price}"
-        transaction_value = price * token_amount
+        transaction_value = round(price * token_amount, 2)
+        token_amount = round(token_amount, 5)
 
         if action == Signal.BUY:
             if self.balances["USDT"] < transaction_value:

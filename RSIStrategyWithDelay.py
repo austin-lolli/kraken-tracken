@@ -19,7 +19,9 @@ class RSIStrategyWithDelay(RSIStrategySimple):
         if now < self.last_trx_timestamp + timedelta(minutes=5):
             return Signal.HOLD
         elif latest_rsi < self.rsi_lower:
+            self.last_trx_timestamp = now
             return Signal.BUY
         elif latest_rsi > self.rsi_upper:
+            self.last_trx_timestamp = now
             return Signal.SELL
         return Signal.HOLD
