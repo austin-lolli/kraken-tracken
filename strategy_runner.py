@@ -3,17 +3,17 @@ import ccxt
 import os
 from telegram.ext import Application
 
-from RSIStrategySimple import RSIStrategySimple
+from RSIStrategyWithDelay import RSIStrategyWithDelay
 from trading_loop import trading_loop
 from TelgramBotInterface import TelegramBotInterface
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN")
 
 
-async def runner_rsi_simple():
+async def strategy_runner():
     print("initializing exchange and strategy")
     exchange = ccxt.kraken({"enableRateLimit": True})
-    strategy = RSIStrategySimple(exchange, rsiLower=50, rsiUpper=50)
+    strategy = RSIStrategyWithDelay(exchange, delay_minutes=15)
 
     print("starting telegram bot")
     app = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -44,4 +44,4 @@ async def runner_rsi_simple():
 
 
 if __name__ == "__main__":
-    asyncio.run(runner_rsi_simple())
+    asyncio.run(strategy_runner())

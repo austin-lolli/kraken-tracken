@@ -11,8 +11,8 @@ class Signal(Enum):
     HOLD = "HOLD"
 
 class AbstractStrategy(ABC):
-    def __init__(self, symbol="ETH/USDT", timeframe="5m"): 
-        self.exchange = ccxt.kraken({"enableRateLimit": True})
+    def __init__(self, exchange, symbol="ETH/USDT", timeframe="5m"): 
+        self.exchange = exchange
         self.symbol = symbol
         self.timeframe = timeframe
         self.balances = {"USDT": 1000.0, "ETH": 0.25}

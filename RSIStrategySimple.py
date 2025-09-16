@@ -3,12 +3,12 @@ import pandas as pd
 
 
 class RSIStrategySimple(AbstractStrategy):
-    def __init__(self, exchange, symbol="ETH/USDT", period=14, rsiLower=30, rsiUpper=70):
-        super().__init__(symbol)
+    def __init__(self, exchange, symbol="ETH/USDT", period=14, rsi_lower=30, rsi_upper=70):
+        super().__init__(exchange, symbol)
         self.exchange = exchange
         self.period = period
-        self.rsiLower = rsiLower
-        self.rsiUpper = rsiUpper
+        self.rsi_lower = rsi_lower
+        self.rsi_upper = rsi_upper
 
     def compute_rsi(self) -> float:
         delta = self.get_ohlcv()["close"].diff()
@@ -24,8 +24,8 @@ class RSIStrategySimple(AbstractStrategy):
         df['rsi'] = self.compute_rsi()
         latest_rsi = df['rsi'].iloc[-1]
 
-        if latest_rsi < self.rsiLower:
+        if latest_rsi < self.rsi_lower:
             return Signal.BUY
-        elif latest_rsi > self.rsiUpper:
+        elif latest_rsi > self.rsi_upper:
             return Signal.SELL
         return Signal.HOLD
