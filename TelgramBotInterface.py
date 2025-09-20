@@ -43,7 +43,7 @@ class TelegramBotInterface:
             "/recent <number> - shows the last <number> transactions, if any. Default <number> is 5.\n"
             "/rsi - returns the current RSI for ETH\n"
         )
-        await self._send_message(msg)
+        await self._send_message(update, msg)
 
     async def balances(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await self._send_message(update, str(self.strategy.get_balances()))
