@@ -32,13 +32,17 @@ class AbstractStrategy(ABC):
         return self.balances
     
     def get_recent_transactions(self, count):
-        recent = self.transactions[:-count] if count < len(self.transactions) else self.transactions
-        return recent
+        if len(self.transactions) == 0:
+            return "No transactions found."
+        
+        recent = self.transactions[-count:] if count < len(self.transactions) else self.transactions
+        return "\n".join(recent)
     
     def perform_transaction(self, price: float, token_amount: float, action: Signal):
         now = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")
         message = f"[{now}][{action}]: {token_amount} ETH at ${price}"
         failure_message = f"[{now}][FAILURE]: Unable to {action} {token_amount} ETH at ${price}"
+
         transaction_value = round(price * token_amount, 2)
         token_amount = round(token_amount, 5)
 
@@ -46,14 +50,14 @@ class AbstractStrategy(ABC):
             if self.balances["USDT"] < transaction_value:
                 message = failure_message
             else:
-                self.balances["USDT"] -= transaction_value
-                self.balances["ETH"] += token_amount
+                self.balances["USDT"] = round(self.balances["USDT"] - transaction_value, 2)
+                self.balances["ETH"] = round(self.balances["ETH"] + token_amount, 5)
         elif action == Signal.SELL:
             if self.balances["ETH"] < token_amount:
                 message = failure_message
             else:
-                self.balances["USDT"] += transaction_value
-                self.balances["ETH"] -= token_amount
+                self.balances["USDT"] = round(self.balances["USDT"] + transaction_value, 2)
+                self.balances["ETH"] = round(self.balances["ETH"] - token_amount, 5)
 
         self.transactions.append(message)
         print(message)
