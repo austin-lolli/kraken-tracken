@@ -3,24 +3,30 @@ import ccxt
 import os
 from telegram.ext import Application
 
-from RSIStrategyWithDelay import RSIStrategyWithDelay
+from strategies.RSIStrategyWithDelay import RSIStrategyWithDelay
+from strategies.RSIStrategySimple import RSIStrategySimple
 from trading_loop import trading_loop
-from TelgramBotInterface import TelegramBotInterface
+from telebot.BotInterface import BotInterface
+from StrategyManager import StrategyManager
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "YOUR_TOKEN")
 
-
+# main execution loop
 async def strategy_runner():
-    print("initializing exchange and strategy")
+    # initialilze exchange, telegram bot, and strategy dictionary
     exchange = ccxt.kraken({"enableRateLimit": True})
-    strategy = RSIStrategyWithDelay(exchange, delay_minutes=15)
-
-    print("starting telegram bot")
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    TelegramBotInterface(app, strategy)
+    strategies = {}
+
+    # The strategy logic is wrapped in a StrategyManager to handle start/stop/status
+    strategies["rsi"] = StrategyManager(RSIStrategySimple(exchange))
+    strategies["rsi_delay"] = StrategyManager(RSIStrategyWithDelay(exchange, delay_minutes=15))
+
+    # Telegram bot is given telegram app and the strategy dictionary
+    BotInterface(app, strategies)
 
     stop_event = asyncio.Event()
-    trade_loop_task = app.create_task(trading_loop(strategy, stop_event))
+    # trade_loop_task = app.create_task(trading_loop(strategy, stop_event))
 
     await app.initialize()
     await app.start()
@@ -30,12 +36,12 @@ async def strategy_runner():
     except KeyboardInterrupt:
         print("Ctrl+C pressed — stopping bot")
     finally:
-        stop_event.set()
-        trade_loop_task.cancel()
-        try:
-            await trade_loop_task
-        except asyncio.CancelledError:
-            pass
+        # stop_event.set()
+        # trade_loop_task.cancel()
+        # try:
+        #     await trade_loop_task
+        # except asyncio.CancelledError:
+        #     pass
 
         await app.updater.stop()
         await app.stop()

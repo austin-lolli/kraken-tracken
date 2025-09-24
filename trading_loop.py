@@ -1,6 +1,6 @@
 import asyncio
 
-from AbstractStrategy import AbstractStrategy, Signal
+from strategies.AbstractStrategy import AbstractStrategy, Signal
 
 async def trading_loop(strategy: AbstractStrategy, stop_event: asyncio.Event):
     trade_size = 0.05

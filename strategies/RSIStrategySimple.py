@@ -1,4 +1,4 @@
-from AbstractStrategy import AbstractStrategy, Signal
+from strategies.AbstractStrategy import AbstractStrategy, Signal
 import pandas as pd
 
 

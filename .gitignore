@@ -1,2 +1,5 @@
 venv/
 errorlog.txt
+__pycache__/
+strategies/__pycache__/
+telebot/__pycache__/

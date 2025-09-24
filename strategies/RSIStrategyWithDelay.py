@@ -1,5 +1,5 @@
-from AbstractStrategy import Signal
-from RSIStrategySimple import RSIStrategySimple
+from strategies.AbstractStrategy import Signal
+from strategies.RSIStrategySimple import RSIStrategySimple
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import pandas as pd
