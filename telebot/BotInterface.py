@@ -37,7 +37,7 @@ class BotInterface:
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         CHAT_ID = update.effective_chat.id
-        await self._send_message(update, "Kraken Trackenis running! Use /help to see available commands.")
+        await self._send_message(update, "Kraken Tracken is running! Use /help to see available commands.")
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = (
@@ -125,4 +125,9 @@ class BotInterface:
 
     # TODO: This is tied to a strategy but this should exist independently, similar to a chart
     async def rsi(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if len(context.args) != 1:
+            await self._send_message(update, "Usage: /rsi <StrategyName>")
+            return
+
+        strategy_name = context.args[0]
         await self._send_message(update, f"Current RSI: {self.strategies[strategy_name].strategy.compute_rsi()}")

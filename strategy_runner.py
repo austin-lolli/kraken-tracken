@@ -26,23 +26,15 @@ async def strategy_runner():
     BotInterface(app, strategies)
 
     stop_event = asyncio.Event()
-    # trade_loop_task = app.create_task(trading_loop(strategy, stop_event))
 
     await app.initialize()
     await app.start()
     try:
-        await app.updater.start_polling()
+        await app.updater.start_polling(poll_interval=3, timeout=15, bootstrap_retries=3)
         await asyncio.Event().wait()
     except KeyboardInterrupt:
         print("Ctrl+C pressed — stopping bot")
     finally:
-        # stop_event.set()
-        # trade_loop_task.cancel()
-        # try:
-        #     await trade_loop_task
-        # except asyncio.CancelledError:
-        #     pass
-
         await app.updater.stop()
         await app.stop()
         await app.shutdown()
